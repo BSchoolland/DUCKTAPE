@@ -6,6 +6,8 @@ import {
   recordAlertSent,
   getProjectById,
 } from './db.js';
+import { formatMessageHistory, getAIResponse } from './aiHandler.js';
+import { splitMessage } from './messageUtils.js';
 
 const timers = new Map(); // Store timers by project ID for cleanup
 let client = null; // Reference to Discord client
@@ -72,6 +74,7 @@ async function checkProject(project) {
   let isUp = false;
   let statusCode = null;
   let responseTimeMs = null;
+  let responseBody = null;
 
   try {
     const controller = new AbortController();
@@ -85,6 +88,17 @@ async function checkProject(project) {
     responseTimeMs = Date.now() - startTime;
     statusCode = response.status;
     isUp = statusCode === 200;
+
+    // Capture response body for DOWN alerts (truncated to 3000 chars)
+    if (!isUp) {
+      try {
+        const fullBody = await response.text();
+        responseBody = fullBody.substring(0, 3000);
+      } catch (bodyErr) {
+        console.log(`⚠️ Could not read response body for ${project.name}: ${bodyErr.message}`);
+        responseBody = null;
+      }
+    }
 
     clearTimeout(timeoutId);
   } catch (err) {
@@ -105,18 +119,18 @@ async function checkProject(project) {
   if (statusChange.wasUp && !statusChange.isNowUp) {
     // Service went down
     if (currentStatus.consecutive_failures === project.failure_threshold) {
-      await sendAlert(project, 'DOWN', statusCode, statusChange.consecutiveFailures);
+      await sendAlert(project, 'DOWN', statusCode, statusChange.consecutiveFailures, responseBody);
       recordAlertSent(project.id);
     }
   } else if (!statusChange.wasUp && statusChange.isNowUp) {
     // Service recovered
-    await sendAlert(project, 'RECOVERED', statusCode, 0);
+    await sendAlert(project, 'RECOVERED', statusCode, 0, null);
     recordAlertSent(project.id);
   }
 }
 
 // Send alert message to Discord
-async function sendAlert(project, status, statusCode, consecutiveFailures) {
+async function sendAlert(project, status, statusCode, consecutiveFailures, responseBody = null) {
   if (!client || !client.isReady()) {
     console.error('Discord client not ready for sending alerts');
     return;
@@ -163,8 +177,90 @@ async function sendAlert(project, status, statusCode, consecutiveFailures) {
     });
 
     console.log(`📢 Alert sent for ${project.name}: ${status}`);
+
+    // If service went DOWN, trigger AI explanation
+    if (status === 'DOWN') {
+      try {
+        await generateAndPostAIExplanation(project, statusCode, responseBody, channel);
+      } catch (aiErr) {
+        console.error(`Failed to generate AI explanation for ${project.name}:`, aiErr);
+        // Don't break the alert flow if AI fails
+      }
+    }
   } catch (err) {
     console.error(`Failed to send alert for project ${project.id}:`, err);
+  }
+}
+
+// Generate and post AI explanation for DOWN service
+async function generateAndPostAIExplanation(project, statusCode, responseBody, channel) {
+  try {
+    // Build status summary for all projects
+    const allProjects = getAllActiveProjects();
+    let statusSummary = 'Current service statuses:\n';
+    
+    for (const p of allProjects) {
+      const status = getProjectStatus(p.id);
+      const statusEmoji = status.is_up ? '🟢' : '🔴';
+      const statusText = status.is_up ? 'UP' : 'DOWN';
+      statusSummary += `${statusEmoji} ${p.name}: ${statusText}`;
+      if (!status.is_up && status.last_status_code) {
+        statusSummary += ` (Status: ${status.last_status_code})`;
+      }
+      statusSummary += '\n';
+    }
+
+    // Build DUCKTAPE SYSTEM context message
+    const responseInfo = responseBody 
+      ? `Response body (truncated):\n\`\`\`\n${responseBody}\n\`\`\`` 
+      : 'Response body: [No response body captured - likely timeout or network error]';
+
+    const systemMessage = `[DUCKTAPE SYSTEM at ${new Date().toLocaleTimeString()}] Service ${project.name} has gone DOWN!
+
+${statusSummary}
+
+Failed service details:
+- URL: ${project.url}
+- Status Code: ${statusCode || 'Timeout/Network Error'}
+- ${responseInfo}
+
+Please provide a brief, witty analysis of why this service might be down and what we should check.`;
+
+    // Fetch message history from the channel
+    let history = [];
+    try {
+      const fetchedMessages = await channel.messages.fetch({ limit: 100 });
+      history = formatMessageHistory(Array.from(fetchedMessages.values()), client.user.id);
+    } catch (fetchErr) {
+      console.warn(`Could not fetch channel history for ${project.name}:`, fetchErr.message);
+      // Continue with empty history if fetch fails
+      history = [];
+    }
+
+    // Append DUCKTAPE SYSTEM message to history
+    history.push({
+      role: 'user',
+      content: systemMessage,
+    });
+
+    // Get AI response
+    const aiReply = await getAIResponse(history);
+
+    if (aiReply) {
+      // Split message if it exceeds Discord's 2000 character limit
+      if (aiReply.length <= 2000) {
+        await channel.send(aiReply);
+      } else {
+        const chunks = splitMessage(aiReply);
+        for (const chunk of chunks) {
+          await channel.send(chunk);
+        }
+      }
+      console.log(`✨ AI explanation posted for ${project.name}`);
+    }
+  } catch (err) {
+    console.error(`Error generating AI explanation for ${project.name}:`, err);
+    // Silently fail - don't break the scheduler
   }
 }
 

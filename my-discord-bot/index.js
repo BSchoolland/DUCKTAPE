@@ -13,6 +13,8 @@ import {
   handleStatusCommand,
   handleListProjectsCommand,
   handleRemoveProjectCommand,
+  handlePersonalityCommand,
+  handlePersonalityModal,
 } from './commands.js';
 
 const client = new Client({
@@ -58,6 +60,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
         case 'ducktape_remove_project':
           await handleRemoveProjectCommand(interaction);
           break;
+        case 'ducktape_personality':
+          await handlePersonalityCommand(interaction);
+          break;
         default:
           await interaction.reply({ content: 'Unknown command', ephemeral: true });
       }
@@ -78,6 +83,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       if (interaction.customId === 'ducktape_add_project_modal') {
         await handleAddProjectModal(interaction);
+      } else if (interaction.customId === 'ducktape_personality_modal') {
+        await handlePersonalityModal(interaction);
       }
     } catch (err) {
       console.error('Modal error:', err);
@@ -121,7 +128,7 @@ client.on(Events.MessageCreate, async (message) => {
     
     // Format message history for AI
     const history = formatMessageHistory(Array.from(fetchedMessages.values()), client.user.id);
-    
+    console.log(history);
     // Get AI response
     const reply = await getAIResponse(history);
     

@@ -55,12 +55,24 @@ export function initializeDatabase() {
     );
   `);
 
+  // Personality traits - global traits set by users
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS personality_traits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT UNIQUE NOT NULL,
+      username TEXT,
+      trait TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
   // Create indexes for common queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_projects_guild ON projects(guild_id);
     CREATE INDEX IF NOT EXISTS idx_projects_channel ON projects(channel_id);
     CREATE INDEX IF NOT EXISTS idx_uptime_checks_project ON uptime_checks(project_id);
     CREATE INDEX IF NOT EXISTS idx_uptime_checks_time ON uptime_checks(checked_at);
+    CREATE INDEX IF NOT EXISTS idx_personality_traits_user ON personality_traits(user_id);
   `);
 }
 
@@ -206,6 +218,23 @@ export function getUptimeStats(projectId) {
   }
   
   return null;
+}
+
+// Personality traits operations
+export function setUserPersonalityTrait(userId, username, trait) {
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO personality_traits (user_id, username, trait)
+    VALUES (?, ?, ?)
+  `);
+  return stmt.run(userId, username, trait);
+}
+
+export function getAllPersonalityTraits() {
+  const stmt = db.prepare(`
+    SELECT trait FROM personality_traits
+    ORDER BY created_at ASC
+  `);
+  return stmt.all().map(row => row.trait);
 }
 
 export default db;

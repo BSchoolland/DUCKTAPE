@@ -1,4 +1,5 @@
 import { OpenRouter } from '@openrouter/sdk';
+import { getAllPersonalityTraits } from './db.js';
 
 const openrouter = new OpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -23,7 +24,15 @@ export function formatMessageHistory(fetchedMessages, clientUserId) {
       const role = m.author.id === clientUserId ? "assistant" : "user";
       let content = m.content;
       
-      // Add timestamp and author info for user messages only
+      // Handle attachments
+      if (!content && m.attachments.size > 0) {
+        const filenames = Array.from(m.attachments.values())
+          .map(att => att.name || "unknown")
+          .join(", ");
+        content = `uploaded ${filenames}`;
+      }
+      
+      // Add timestamp and author info for user messages
       if (role === "user") {
         const timestamp = new Date(m.createdTimestamp).toLocaleTimeString();
         const author = m.author.username;
@@ -41,10 +50,22 @@ export function formatMessageHistory(fetchedMessages, clientUserId) {
  */
 export async function getAIResponse(history) {
   try {
+    const baseSystemPrompt = "You are a AI discord bot named Ducktape designed to notify the user when projects they are monitoring have issues. Keep all responses concise and under 200 words.  You're not all serious though.  Personality traits: ";
+    
+    // Fetch all user-defined personality traits
+    const personalityTraits = getAllPersonalityTraits();
+    const traitsSection = personalityTraits.length > 0 
+      ? personalityTraits.join("; ") 
+      : "None set yet - be naturally helpful and friendly.";
+    
+    const systemPrompt = baseSystemPrompt + traitsSection;
+    
     const response = await openrouter.chat.send({
       model: "x-ai/grok-4.1-fast",
-      system: "You are a discord bot named Ducktape designed to troll the user. Keep your responses concise and under 200 words.  Roast users, argue for fun with everyone, be funny, and generally cause chaos in the discord channel.",
-      messages: history,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...history,
+      ],
     });
     
     return response?.choices?.[0]?.message?.content || null;

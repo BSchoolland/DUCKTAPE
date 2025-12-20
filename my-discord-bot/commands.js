@@ -13,6 +13,7 @@ import {
   deleteProject,
   setAlertChannel,
   getProjectById,
+  setUserPersonalityTrait,
 } from './db.js';
 import { addProject as schedulerAddProject } from './scheduler.js';
 import { generateStatusImage, generateTextStatus } from './statusGraph.js';
@@ -223,6 +224,9 @@ export async function handleStatusCommand(interaction) {
     await interaction.deferReply();
 
     const projects = getProjectsByGuild(interaction.guildId);
+    
+    // Get days parameter (default to 7)
+    const days = interaction.options.getInteger('days') || 7;
 
     if (projects.length === 0) {
       await interaction.editReply({
@@ -232,19 +236,19 @@ export async function handleStatusCommand(interaction) {
     }
 
     // Try to generate image, fallback to text
-    let imageBuffer = null;
+    let imageResult = null;
     try {
-      imageBuffer = await generateStatusImage(projects);
+      imageResult = await generateStatusImage(projects, days);
     } catch (err) {
       console.warn('Failed to generate status image, using text fallback:', err);
     }
 
-    if (imageBuffer) {
+    if (imageResult) {
       await interaction.editReply({
         files: [
           {
-            attachment: imageBuffer,
-            name: 'status.png',
+            attachment: imageResult.buffer,
+            name: imageResult.filename,
           },
         ],
       });
@@ -329,6 +333,64 @@ export async function handleRemoveProjectCommand(interaction) {
     console.error('Error removing project:', err);
     await interaction.reply({
       content: `❌ Error: ${err.message}`,
+      ephemeral: true,
+    });
+  }
+}
+
+// Handle /ducktape_personality command - show modal
+export async function handlePersonalityCommand(interaction) {
+  const modal = new ModalBuilder()
+    .setCustomId('ducktape_personality_modal')
+    .setTitle('Set Ducktape Personality');
+
+  const traitInput = new TextInputBuilder()
+    .setCustomId('personality_trait')
+    .setLabel('Your Personality Trait')
+    .setStyle(TextInputStyle.Paragraph)
+    .setPlaceholder('Max 30 words (this will replace your previous trait)')
+    .setMaxLength(250)
+    .setRequired(true);
+
+  modal.addComponents(new ActionRowBuilder().addComponents(traitInput));
+
+  await interaction.showModal(modal);
+}
+
+// Handle personality modal submission
+export async function handlePersonalityModal(interaction) {
+  const trait = interaction.fields.getTextInputValue('personality_trait');
+
+  // Validate that trait is not empty after trimming
+  if (!trait || trait.trim().length === 0) {
+    await interaction.reply({
+      content: '❌ Personality trait cannot be empty',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  // Validate word count (max 30 words)
+  const wordCount = trait.trim().split(/\s+/).length;
+  if (wordCount > 30) {
+    await interaction.reply({
+      content: `❌ Personality trait must be 30 words or less (you provided ${wordCount} words)`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    setUserPersonalityTrait(interaction.user.id, interaction.user.username, trait.trim());
+
+    await interaction.reply({
+      content: `✨ **${interaction.user.username}** set a personality trait:\n> "${trait.trim()}"\n\n(This will replace any previous trait they had set, but keep traits from other users)`,
+      ephemeral: false,
+    });
+  } catch (err) {
+    console.error('Error saving personality trait:', err);
+    await interaction.reply({
+      content: `❌ Error saving personality trait: ${err.message}`,
       ephemeral: true,
     });
   }
