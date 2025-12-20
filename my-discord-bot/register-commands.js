@@ -7,6 +7,43 @@ const commands = [
     .setName('ping')
     .setDescription('Replies with pong')
     .toJSON(),
+  
+  new SlashCommandBuilder()
+    .setName('ducktape_add_project')
+    .setDescription('Add a new project to monitor for uptime')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('ducktape_here')
+    .setDescription('Set alert channel for a project to this channel')
+    .addStringOption(option =>
+      option
+        .setName('project')
+        .setDescription('Project name to send alerts for (leave empty for this channel\'s projects)')
+        .setRequired(false)
+    )
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('ducktape_status')
+    .setDescription('View uptime status for all projects in this server')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('ducktape_list_projects')
+    .setDescription('List all projects being monitored in this server')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('ducktape_remove_project')
+    .setDescription('Remove a project from monitoring')
+    .addStringOption(option =>
+      option
+        .setName('project')
+        .setDescription('Project name to remove')
+        .setRequired(true)
+    )
+    .toJSON(),
 ];
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

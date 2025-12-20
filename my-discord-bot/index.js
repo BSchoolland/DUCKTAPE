@@ -3,6 +3,17 @@ import 'dotenv/config';
 import { Client, GatewayIntentBits, Events } from 'discord.js';
 import { formatMessageHistory, getAIResponse } from './aiHandler.js';
 import { splitMessage } from './messageUtils.js';
+import { initializeDatabase } from './db.js';
+import { initializeScheduler, startScheduler } from './scheduler.js';
+import {
+  handleAddProjectCommand,
+  handleAddProjectModal,
+  handleDucktapeHereCommand,
+  handleDucktapeHereSelect,
+  handleStatusCommand,
+  handleListProjectsCommand,
+  handleRemoveProjectCommand,
+} from './commands.js';
 
 const client = new Client({
   intents: [
@@ -14,13 +25,88 @@ const client = new Client({
 
 client.once(Events.ClientReady, (c) => {
   console.log(`✅ Logged in as ${c.user.tag}`);
+
+  // Initialize database and scheduler
+  initializeDatabase();
+  console.log('🗄️ Database initialized');
+
+  initializeScheduler(c);
+  startScheduler();
+  console.log('🔄 Scheduler started');
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
-  if (!interaction.isChatInputCommand()) return;
+  // Handle slash commands
+  if (interaction.isChatInputCommand()) {
+    try {
+      switch (interaction.commandName) {
+        case 'ping':
+          await interaction.reply('Pong');
+          break;
+        case 'ducktape_add_project':
+          await handleAddProjectCommand(interaction);
+          break;
+        case 'ducktape_here':
+          await handleDucktapeHereCommand(interaction);
+          break;
+        case 'ducktape_status':
+          await handleStatusCommand(interaction);
+          break;
+        case 'ducktape_list_projects':
+          await handleListProjectsCommand(interaction);
+          break;
+        case 'ducktape_remove_project':
+          await handleRemoveProjectCommand(interaction);
+          break;
+        default:
+          await interaction.reply({ content: 'Unknown command', ephemeral: true });
+      }
+    } catch (err) {
+      console.error('Command error:', err);
+      const reply = { content: 'An error occurred while processing the command', ephemeral: true };
+      if (interaction.replied) {
+        await interaction.followUp(reply);
+      } else {
+        await interaction.reply(reply);
+      }
+    }
+    return;
+  }
 
-  if (interaction.commandName === 'ping') {
-    await interaction.reply("Pong");
+  // Handle modal submissions
+  if (interaction.isModalSubmit()) {
+    try {
+      if (interaction.customId === 'ducktape_add_project_modal') {
+        await handleAddProjectModal(interaction);
+      }
+    } catch (err) {
+      console.error('Modal error:', err);
+      const reply = { content: 'An error occurred while processing the form', ephemeral: true };
+      if (interaction.replied) {
+        await interaction.followUp(reply);
+      } else {
+        await interaction.reply(reply);
+      }
+    }
+    return;
+  }
+
+  // Handle select menus
+  if (interaction.isStringSelectMenu()) {
+    try {
+      if (interaction.customId === 'ducktape_here_select') {
+        await handleDucktapeHereSelect(interaction);
+      }
+    } catch (err) {
+      console.error('Select menu error:', err);
+      const reply = { content: 'An error occurred', ephemeral: true };
+      if (interaction.replied) {
+        await interaction.followUp(reply);
+      } else {
+        await interaction.reply(reply);
+      }
+    }
+    return;
   }
 });
 

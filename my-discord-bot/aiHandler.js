@@ -47,9 +47,6 @@ export async function getAIResponse(history) {
       messages: history,
     });
     
-    console.log(history);
-    console.log(response);
-    
     return response?.choices?.[0]?.message?.content || null;
   } catch (err) {
     console.error('AI Response Error:', err);
