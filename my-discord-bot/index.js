@@ -42,9 +42,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
   if (interaction.isChatInputCommand()) {
     try {
       switch (interaction.commandName) {
-        case 'ping':
-          await interaction.reply('Pong');
-          break;
         case 'ducktape_add_project':
           await handleAddProjectCommand(interaction);
           break;

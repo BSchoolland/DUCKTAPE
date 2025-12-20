@@ -126,7 +126,7 @@ export async function handleAddProjectModal(interaction) {
 
     await interaction.reply({
       content: `✅ Project **${projectName}** added and monitoring started!\n🔗 URL: ${url}\n⏱️ Check interval: ${checkInterval}s\n⚠️ Alert threshold: ${failureThreshold} failures`,
-      ephemeral: true,
+      ephemeral: false,
     });
   } catch (err) {
     console.error('Error creating project:', err);

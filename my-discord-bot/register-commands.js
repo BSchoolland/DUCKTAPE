@@ -4,11 +4,6 @@ import { REST, Routes, SlashCommandBuilder } from 'discord.js';
 
 const commands = [
   new SlashCommandBuilder()
-    .setName('ping')
-    .setDescription('Replies with pong')
-    .toJSON(),
-  
-  new SlashCommandBuilder()
     .setName('ducktape_add_project')
     .setDescription('Add a new project to monitor for uptime')
     .toJSON(),

@@ -197,6 +197,19 @@ export function getUptimeForLast7Days(projectId) {
   return stmt.all(projectId);
 }
 
+export function getRecentUptimeChecks(projectId, hoursAgo) {
+  const stmt = db.prepare(`
+    SELECT * FROM uptime_checks
+    WHERE project_id = ? AND checked_at > datetime('now', '-${hoursAgo} hours')
+    ORDER BY checked_at ASC
+  `);
+  return stmt.all(projectId);
+}
+
+export function getUptimeForLast3Hours(projectId) {
+  return getRecentUptimeChecks(projectId, 3);
+}
+
 export function getUptimeStats(projectId) {
   const stmt = db.prepare(`
     SELECT 
