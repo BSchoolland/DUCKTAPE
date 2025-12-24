@@ -264,8 +264,11 @@ async function checkProjectVulnerabilities(project) {
   
   return {
     alertSent: shouldAlert,
+    // For the overall scan summary, we want:
+    // - criticalCount: all current critical vulns (still important even if old)
+    // - highCount: only NEW high vulns, not existing ones
     criticalCount: counts.critical,
-    highCount: counts.high,
+    highCount: newHighVulns.length,
     newAlerts: newHighVulns.length + newCriticalVulns.length,
     resolved: resolvedHighPlus.length,
   };
