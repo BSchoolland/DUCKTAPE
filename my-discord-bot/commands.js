@@ -387,10 +387,10 @@ export async function handleScanVulnsCommand(interaction) {
       ephemeral: false,
     });
 
-    // Run the scan in the background (don't await)
-    scanGuildProjectsNow(interaction.guildId, interaction)
+    // Run the scan in the background (don't await), pass channel for completion message
+    scanGuildProjectsNow(interaction.guildId, interaction.channel)
       .then(result => {
-        console.log(`✅ Vulnerability scan complete for guild ${interaction.guildId}: ${result.scanned} projects scanned`);
+        console.log(`✅ Vulnerability scan complete for guild ${interaction.guildId}: ${result.scanned} projects, ${result.totalCritical} critical, ${result.totalHigh} high`);
       })
       .catch(err => {
         console.error(`Vulnerability scan failed for guild ${interaction.guildId}:`, err);

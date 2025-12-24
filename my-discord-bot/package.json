@@ -15,7 +15,7 @@
     "canvas": "^2.11.2",
     "discord.js": "^14.25.1",
     "dotenv": "^17.2.3",
-    "wappalyzer": "file:../wappalyzer/src/drivers/npm"
+    "wappalyzer": "^6.10.66"
   },
   "type": "module"
 }

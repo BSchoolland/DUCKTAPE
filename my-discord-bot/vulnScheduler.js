@@ -111,16 +111,18 @@ export async function triggerVulnCheck(projectId) {
 /**
  * Scan all projects for a specific guild now
  * @param {string} guildId - Discord guild ID
- * @param {object} interaction - Discord interaction for progress updates
+ * @param {object} channel - Discord channel to send completion message
  */
-export async function scanGuildProjectsNow(guildId, interaction) {
+export async function scanGuildProjectsNow(guildId, channel) {
   const projects = getAllActiveProjects().filter(p => p.guild_id === guildId);
   
   if (projects.length === 0) {
-    return { scanned: 0, vulnerabilities: 0 };
+    return { scanned: 0, alertsSent: 0, totalCritical: 0, totalHigh: 0 };
   }
   
-  let totalVulns = 0;
+  let alertsSent = 0;
+  let totalCritical = 0;
+  let totalHigh = 0;
   
   for (let i = 0; i < projects.length; i++) {
     const project = projects[i];
@@ -128,7 +130,9 @@ export async function scanGuildProjectsNow(guildId, interaction) {
     try {
       const result = await checkProjectVulnerabilities(project);
       if (result) {
-        totalVulns += result.newAlerts + result.criticalAlerts;
+        if (result.alertSent) alertsSent++;
+        totalCritical += result.criticalCount;
+        totalHigh += result.highCount;
       }
     } catch (err) {
       console.error(`Vulnerability scan failed for ${project.name}:`, err);
@@ -140,7 +144,36 @@ export async function scanGuildProjectsNow(guildId, interaction) {
     }
   }
   
-  return { scanned: projects.length, vulnerabilities: totalVulns };
+  // Send completion message to channel
+  if (channel) {
+    try {
+      if (alertsSent === 0 && totalCritical === 0 && totalHigh === 0) {
+        await channel.send({
+          embeds: [{
+            color: 0x00ff00,
+            title: '✅ Vulnerability Scan Complete',
+            description: `Scanned ${projects.length} project(s) - **All Clear!**\nNo HIGH or CRITICAL vulnerabilities detected.`,
+            timestamp: new Date(),
+            footer: { text: 'Ducktape Vulnerability Scanner' },
+          }],
+        });
+      } else {
+        await channel.send({
+          embeds: [{
+            color: totalCritical > 0 ? 0xff0000 : 0xffa500,
+            title: '🔒 Vulnerability Scan Complete',
+            description: `Scanned ${projects.length} project(s)\n🔴 Critical: ${totalCritical} | 🟠 High: ${totalHigh}\n\nSee alerts above for details.`,
+            timestamp: new Date(),
+            footer: { text: 'Ducktape Vulnerability Scanner' },
+          }],
+        });
+      }
+    } catch (err) {
+      console.error('Failed to send scan completion message:', err);
+    }
+  }
+  
+  return { scanned: projects.length, alertsSent, totalCritical, totalHigh };
 }
 
 /**
@@ -195,11 +228,16 @@ async function checkProjectVulnerabilities(project) {
     markCVEsResolved(project.id, resolvedCVEIds);
   }
   
-  // Determine if we need to alert
+  // Determine if we need to alert:
+  // - Any NEW HIGH vulnerabilities
+  // - ANY CRITICAL vulnerabilities (new or existing - always alert on critical)
+  // - Any resolved HIGH+ vulnerabilities
   const shouldAlert = 
     newHighVulns.length > 0 || 
-    newCriticalVulns.length > 0 || 
+    allCurrentCritical.length > 0 ||  // Always alert if ANY critical exist
     resolvedHighPlus.length > 0;
+  
+  console.log(`   → New HIGH: ${newHighVulns.length}, Current CRITICAL: ${allCurrentCritical.length}, Resolved: ${resolvedHighPlus.length}`);
   
   if (shouldAlert) {
     await sendVulnAlert(project, {
@@ -216,8 +254,10 @@ async function checkProjectVulnerabilities(project) {
   console.log(`📊 ${project.name}: ${counts.total} total (${counts.critical} critical, ${counts.high} high)`);
   
   return {
+    alertSent: shouldAlert,
+    criticalCount: counts.critical,
+    highCount: counts.high,
     newAlerts: newHighVulns.length + newCriticalVulns.length,
-    criticalAlerts: allCurrentCritical.length,
     resolved: resolvedHighPlus.length,
   };
 }
