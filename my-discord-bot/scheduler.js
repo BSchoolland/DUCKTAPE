@@ -8,6 +8,7 @@ import {
 } from './db.js';
 import { formatMessageHistory, getAIResponse } from './aiHandler.js';
 import { splitMessage } from './messageUtils.js';
+import { triggerVulnCheck } from './vulnScheduler.js';
 
 const timers = new Map(); // Store timers by project ID for cleanup
 let client = null; // Reference to Discord client
@@ -56,6 +57,11 @@ export function addProject(projectId) {
   if (project) {
     scheduleProjectCheck(project);
     console.log(`✅ Added project ${projectId} to scheduler`);
+    
+    // Also trigger initial vulnerability scan for the new project
+    triggerVulnCheck(projectId).catch(err => {
+      console.error(`Initial vuln scan failed for project ${projectId}:`, err);
+    });
   }
 }
 

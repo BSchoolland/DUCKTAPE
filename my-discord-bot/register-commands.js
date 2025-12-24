@@ -19,9 +19,9 @@ const commands = [
     .addIntegerOption(option =>
       option
         .setName('days')
-        .setDescription('Number of days to show (1-30, default: 7)')
+        .setDescription('Number of days to show (default: 7)')
         .setMinValue(1)
-        .setMaxValue(30)
+        .setMaxValue(999999999)
         .setRequired(false)
     )
     .toJSON(),
@@ -45,6 +45,11 @@ const commands = [
   new SlashCommandBuilder()
     .setName('ducktape_personality')
     .setDescription('Set a global personality trait for Ducktape')
+    .toJSON(),
+
+  new SlashCommandBuilder()
+    .setName('ducktape_scan_vulns')
+    .setDescription('Scan all projects in this server for security vulnerabilities now')
     .toJSON(),
 ];
 

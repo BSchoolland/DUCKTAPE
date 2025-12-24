@@ -17,6 +17,7 @@ import {
 } from './db.js';
 import { addProject as schedulerAddProject } from './scheduler.js';
 import { generateStatusImage, generateTextStatus } from './statusGraph.js';
+import { scanGuildProjectsNow } from './vulnScheduler.js';
 
 // Validate URL format
 function isValidUrl(urlString) {
@@ -363,6 +364,42 @@ export async function handlePersonalityModal(interaction) {
     console.error('Error saving personality trait:', err);
     await interaction.reply({
       content: `❌ Error saving personality trait: ${err.message}`,
+      ephemeral: true,
+    });
+  }
+}
+
+// Handle /ducktape_scan_vulns command
+export async function handleScanVulnsCommand(interaction) {
+  try {
+    const projects = getProjectsByGuild(interaction.guildId);
+
+    if (projects.length === 0) {
+      await interaction.reply({
+        content: '❌ No projects configured in this server yet. Use `/ducktape_add_project` to add one first.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    await interaction.reply({
+      content: `🔒 Starting vulnerability scan for ${projects.length} project(s)...\nThis may take a few minutes. Alerts will be posted if vulnerabilities are found.`,
+      ephemeral: false,
+    });
+
+    // Run the scan in the background (don't await)
+    scanGuildProjectsNow(interaction.guildId, interaction)
+      .then(result => {
+        console.log(`✅ Vulnerability scan complete for guild ${interaction.guildId}: ${result.scanned} projects scanned`);
+      })
+      .catch(err => {
+        console.error(`Vulnerability scan failed for guild ${interaction.guildId}:`, err);
+      });
+
+  } catch (err) {
+    console.error('Error handling scan vulns command:', err);
+    await interaction.reply({
+      content: `❌ Error: ${err.message}`,
       ephemeral: true,
     });
   }

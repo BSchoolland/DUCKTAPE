@@ -5,6 +5,7 @@ import { formatMessageHistory, getAIResponse } from './aiHandler.js';
 import { splitMessage } from './messageUtils.js';
 import { initializeDatabase } from './db.js';
 import { initializeScheduler, startScheduler } from './scheduler.js';
+import { initializeVulnScheduler, startVulnScheduler } from './vulnScheduler.js';
 import {
   handleAddProjectCommand,
   handleAddProjectModal,
@@ -15,6 +16,7 @@ import {
   handleRemoveProjectCommand,
   handlePersonalityCommand,
   handlePersonalityModal,
+  handleScanVulnsCommand,
 } from './commands.js';
 
 const client = new Client({
@@ -35,6 +37,10 @@ client.once(Events.ClientReady, (c) => {
   initializeScheduler(c);
   startScheduler();
   console.log('🔄 Scheduler started');
+
+  initializeVulnScheduler(c);
+  startVulnScheduler();
+  console.log('🔒 Vulnerability scheduler started');
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
@@ -59,6 +65,9 @@ client.on(Events.InteractionCreate, async (interaction) => {
           break;
         case 'ducktape_personality':
           await handlePersonalityCommand(interaction);
+          break;
+        case 'ducktape_scan_vulns':
+          await handleScanVulnsCommand(interaction);
           break;
         default:
           await interaction.reply({ content: 'Unknown command', ephemeral: true });

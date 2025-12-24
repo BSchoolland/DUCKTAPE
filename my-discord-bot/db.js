@@ -66,6 +66,26 @@ export function initializeDatabase() {
     );
   `);
 
+  // Service CVEs - tracks vulnerabilities per project
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS service_cves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      cve_id TEXT NOT NULL,
+      technology TEXT,
+      version TEXT,
+      severity TEXT,
+      cvss REAL,
+      source TEXT,
+      description TEXT,
+      url TEXT,
+      first_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      resolved_at DATETIME,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      UNIQUE(project_id, cve_id)
+    );
+  `);
+
   // Create indexes for common queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_projects_guild ON projects(guild_id);
@@ -73,6 +93,8 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_uptime_checks_project ON uptime_checks(project_id);
     CREATE INDEX IF NOT EXISTS idx_uptime_checks_time ON uptime_checks(checked_at);
     CREATE INDEX IF NOT EXISTS idx_personality_traits_user ON personality_traits(user_id);
+    CREATE INDEX IF NOT EXISTS idx_service_cves_project ON service_cves(project_id);
+    CREATE INDEX IF NOT EXISTS idx_service_cves_resolved ON service_cves(resolved_at);
   `);
 }
 
@@ -248,6 +270,90 @@ export function getAllPersonalityTraits() {
     ORDER BY created_at ASC
   `);
   return stmt.all().map(row => row.trait);
+}
+
+// Service CVE operations
+export function getActiveCVEsForProject(projectId) {
+  const stmt = db.prepare(`
+    SELECT * FROM service_cves
+    WHERE project_id = ? AND resolved_at IS NULL
+    ORDER BY cvss DESC
+  `);
+  return stmt.all(projectId);
+}
+
+export function getAllCVEsForProject(projectId) {
+  const stmt = db.prepare(`
+    SELECT * FROM service_cves
+    WHERE project_id = ?
+    ORDER BY first_seen_at DESC
+  `);
+  return stmt.all(projectId);
+}
+
+export function saveCVE(projectId, cve) {
+  const stmt = db.prepare(`
+    INSERT OR IGNORE INTO service_cves 
+    (project_id, cve_id, technology, version, severity, cvss, source, description, url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  return stmt.run(
+    projectId,
+    cve.cve,
+    cve.technology,
+    cve.version,
+    cve.severity,
+    cve.cvss,
+    cve.source,
+    cve.description,
+    cve.url
+  );
+}
+
+export function saveCVEs(projectId, cves) {
+  const insertStmt = db.prepare(`
+    INSERT OR IGNORE INTO service_cves 
+    (project_id, cve_id, technology, version, severity, cvss, source, description, url)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  
+  const insertMany = db.transaction((cveList) => {
+    for (const cve of cveList) {
+      insertStmt.run(
+        projectId,
+        cve.cve,
+        cve.technology,
+        cve.version,
+        cve.severity,
+        cve.cvss,
+        cve.source,
+        cve.description,
+        cve.url
+      );
+    }
+  });
+  
+  insertMany(cves);
+}
+
+export function markCVEsResolved(projectId, cveIds) {
+  if (!cveIds || cveIds.length === 0) return;
+  
+  const placeholders = cveIds.map(() => '?').join(',');
+  const stmt = db.prepare(`
+    UPDATE service_cves 
+    SET resolved_at = CURRENT_TIMESTAMP 
+    WHERE project_id = ? AND cve_id IN (${placeholders}) AND resolved_at IS NULL
+  `);
+  stmt.run(projectId, ...cveIds);
+}
+
+export function getCVEById(projectId, cveId) {
+  const stmt = db.prepare(`
+    SELECT * FROM service_cves
+    WHERE project_id = ? AND cve_id = ?
+  `);
+  return stmt.get(projectId, cveId);
 }
 
 export default db;
