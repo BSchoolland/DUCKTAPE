@@ -138,53 +138,25 @@ export async function handleAddProjectModal(interaction) {
 }
 
 // Handle /ducktape_here command
+// Sets the alert channel for **all** projects in this guild to the current channel
 export async function handleDucktapeHereCommand(interaction) {
   try {
-    const projectParam = interaction.options.getString('project');
-    const projects = projectParam
-      ? getProjectsByGuild(interaction.guildId).filter(
-          p => p.name.toLowerCase().includes(projectParam.toLowerCase())
-        )
-      : getProjectsByChannel(interaction.guildId, interaction.channelId);
+    const projects = getProjectsByGuild(interaction.guildId);
 
     if (projects.length === 0) {
       await interaction.reply({
-        content: '❌ No projects found' + (projectParam ? ` matching "${projectParam}"` : ''),
+        content: '❌ No projects configured in this server yet.',
         ephemeral: true,
       });
       return;
     }
-
-    if (projects.length === 1) {
-      // Single project - update directly
-      setAlertChannel(projects[0].id, interaction.channelId);
-      await interaction.reply({
-        content: `✅ Alerts for **${projects[0].name}** will now be sent to this channel`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    // Multiple projects - show selection menu
-    const selectMenu = new StringSelectMenuBuilder()
-      .setCustomId('ducktape_here_select')
-      .setPlaceholder('Select project(s) to receive alerts')
-      .setMinValues(1)
-      .setMaxValues(Math.min(projects.length, 25));
 
     for (const project of projects) {
-      selectMenu.addOptions({
-        label: project.name,
-        value: project.id.toString(),
-        description: `URL: ${project.url.substring(0, 50)}`,
-      });
+      setAlertChannel(project.id, interaction.channelId);
     }
 
-    const row = new ActionRowBuilder().addComponents(selectMenu);
-
     await interaction.reply({
-      content: 'Select which projects should send alerts to this channel:',
-      components: [row],
+      content: `✅ Alerts for all ${projects.length} project(s) in this server will now be sent to this channel`,
       ephemeral: true,
     });
   } catch (err) {

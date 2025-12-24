@@ -10,13 +10,7 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('ducktape_here')
-    .setDescription('Set alert channel for a project to this channel')
-    .addStringOption(option =>
-      option
-        .setName('project')
-        .setDescription('Project name to send alerts for (leave empty for this channel\'s projects)')
-        .setRequired(false)
-    )
+    .setDescription('Set alert channel for all projects in this server to this channel')
     .toJSON(),
 
   new SlashCommandBuilder()

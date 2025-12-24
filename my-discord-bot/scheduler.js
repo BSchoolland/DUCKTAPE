@@ -108,22 +108,42 @@ async function checkProject(project) {
     console.log(`⚠️ Error checking ${project.name}: ${err.message}`);
   }
 
+  // Get previous status BEFORE updating, so we can see how bad things were
+  const previousStatus = getProjectStatus(project.id);
+
   // Log the check
   logUptime(project.id, isUp, statusCode, responseTimeMs);
 
   // Update status and check for alerts
   const statusChange = updateProjectStatus(project.id, isUp, statusCode, responseTimeMs);
-  const currentStatus = getProjectStatus(project.id);
 
   // Handle state changes and alert thresholds
-  if (statusChange.wasUp && !statusChange.isNowUp) {
-    // Service went down
-    if (currentStatus.consecutive_failures === project.failure_threshold) {
-      await sendAlert(project, 'DOWN', statusCode, statusChange.consecutiveFailures, responseBody);
-      recordAlertSent(project.id);
-    }
-  } else if (!statusChange.wasUp && statusChange.isNowUp) {
-    // Service recovered
+  // Compute when to send DOWN alerts:
+  // - First alert when failures reach failure_threshold
+  // - Second alert 30 minutes of continuous failures later:
+  //   at failure_threshold + int(1800 / check_interval_sec)
+  const checksPer30Min = Math.floor(1800 / project.check_interval_sec);
+  const secondFailureThreshold =
+    checksPer30Min > 0 ? project.failure_threshold + checksPer30Min : null;
+
+  const hadReachedFailureThreshold =
+    previousStatus &&
+    typeof previousStatus.consecutive_failures === 'number' &&
+    previousStatus.consecutive_failures >= project.failure_threshold;
+
+  // DOWN alerts
+  if (
+    !isUp &&
+    (
+      statusChange.consecutiveFailures === project.failure_threshold ||
+      (secondFailureThreshold !== null &&
+        statusChange.consecutiveFailures === secondFailureThreshold)
+    )
+  ) {
+    await sendAlert(project, 'DOWN', statusCode, statusChange.consecutiveFailures, responseBody);
+    recordAlertSent(project.id);
+  } else if (isUp && !statusChange.wasUp && hadReachedFailureThreshold) {
+    // Service recovered after actually being considered DOWN (hit threshold at some point)
     await sendAlert(project, 'RECOVERED', statusCode, 0, null);
     recordAlertSent(project.id);
   }

@@ -14,7 +14,7 @@ const COLORS = {
   textPrimary: '#e6edf3',
   textSecondary: '#8b949e',
   textMuted: '#6e7681',
-  up: '#238636',
+  up: '#b1cd32',
   upBright: '#2ea043',
   down: '#da3633',
   downBright: '#f85149',
