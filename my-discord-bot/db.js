@@ -86,6 +86,20 @@ export function initializeDatabase() {
     );
   `);
 
+  // Ignored CVEs - tracks vulnerabilities the user has marked as "OK"
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ignored_cves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project_id INTEGER NOT NULL,
+      cve_id TEXT NOT NULL,
+      reason TEXT,
+      created_by_user_id TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+      UNIQUE(project_id, cve_id)
+    );
+  `);
+
   // Create indexes for common queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_projects_guild ON projects(guild_id);
@@ -95,6 +109,7 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_personality_traits_user ON personality_traits(user_id);
     CREATE INDEX IF NOT EXISTS idx_service_cves_project ON service_cves(project_id);
     CREATE INDEX IF NOT EXISTS idx_service_cves_resolved ON service_cves(resolved_at);
+    CREATE INDEX IF NOT EXISTS idx_ignored_cves_project ON ignored_cves(project_id);
   `);
 }
 
@@ -354,6 +369,36 @@ export function getCVEById(projectId, cveId) {
     WHERE project_id = ? AND cve_id = ?
   `);
   return stmt.get(projectId, cveId);
+}
+
+// Ignored CVE operations
+export function getIgnoredCVEsForProject(projectId) {
+  const stmt = db.prepare(`
+    SELECT cve_id FROM ignored_cves
+    WHERE project_id = ?
+  `);
+  return stmt.all(projectId).map(row => row.cve_id);
+}
+
+export function ignoreCVEs(projectId, cveIds, userId, reason = null) {
+  if (!cveIds || cveIds.length === 0) return;
+
+  const insertStmt = db.prepare(`
+    INSERT INTO ignored_cves (project_id, cve_id, reason, created_by_user_id)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(project_id, cve_id) DO UPDATE SET
+      reason = excluded.reason,
+      created_by_user_id = excluded.created_by_user_id,
+      created_at = CURRENT_TIMESTAMP
+  `);
+
+  const insertMany = db.transaction((ids) => {
+    for (const cveId of ids) {
+      insertStmt.run(projectId, cveId, reason, userId);
+    }
+  });
+
+  insertMany(cveIds);
 }
 
 export default db;

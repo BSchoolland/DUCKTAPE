@@ -17,6 +17,7 @@ import {
   handlePersonalityCommand,
   handlePersonalityModal,
   handleScanVulnsCommand,
+  handleIgnoreCVEsSelect,
 } from './commands.js';
 
 const client = new Client({
@@ -109,6 +110,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
     try {
       if (interaction.customId === 'ducktape_here_select') {
         await handleDucktapeHereSelect(interaction);
+      } else if (interaction.customId.startsWith('ducktape_ignore_cves:')) {
+        await handleIgnoreCVEsSelect(interaction);
       }
     } catch (err) {
       console.error('Select menu error:', err);

@@ -14,6 +14,7 @@ import {
   setAlertChannel,
   getProjectById,
   setUserPersonalityTrait,
+  ignoreCVEs,
 } from './db.js';
 import { addProject as schedulerAddProject } from './scheduler.js';
 import { generateStatusImage, generateTextStatus } from './statusGraph.js';
@@ -188,6 +189,51 @@ export async function handleDucktapeHereSelect(interaction) {
       content: `❌ Error: ${err.message}`,
       ephemeral: true,
     });
+  }
+}
+
+// Handle select menu for ignoring vulnerabilities for a project
+export async function handleIgnoreCVEsSelect(interaction) {
+  try {
+    const [prefix, projectIdStr] = interaction.customId.split(':');
+    const projectId = parseInt(projectIdStr, 10);
+
+    if (!projectId || Number.isNaN(projectId)) {
+      await interaction.reply({
+        content: '❌ Could not determine project for this vulnerability selection.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const cveIds = interaction.values || [];
+
+    if (cveIds.length === 0) {
+      await interaction.reply({
+        content: 'No vulnerabilities were selected to ignore.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    ignoreCVEs(projectId, cveIds, interaction.user.id);
+
+    await interaction.reply({
+      content: `✅ Marked ${cveIds.length} vulnerability(ies) as ignored for this project.\nThey will no longer trigger alerts in future scans.`,
+      ephemeral: true,
+    });
+  } catch (err) {
+    console.error('Error handling ignore CVEs select:', err);
+    const reply = {
+      content: `❌ Error ignoring vulnerabilities: ${err.message}`,
+      ephemeral: true,
+    };
+
+    if (interaction.replied) {
+      await interaction.followUp(reply);
+    } else {
+      await interaction.reply(reply);
+    }
   }
 }
 

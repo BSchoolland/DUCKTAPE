@@ -10,10 +10,12 @@ import {
   getActiveCVEsForProject,
   saveCVEs,
   markCVEsResolved,
+  getIgnoredCVEsForProject,
 } from './db.js';
 import { scanUrl, getVulnCounts, getHighAndCritical } from './vulnScanner.js';
 import { formatMessageHistory, getAIResponse } from './aiHandler.js';
 import { splitMessage } from './messageUtils.js';
+import { ActionRowBuilder, StringSelectMenuBuilder } from 'discord.js';
 
 let client = null;
 let dailyTimer = null;
@@ -194,6 +196,7 @@ async function checkProjectVulnerabilities(project) {
   
   const currentVulns = scanResult.vulnerabilities;
   const storedCVEs = getActiveCVEsForProject(project.id);
+  const ignoredCVEIds = new Set(getIgnoredCVEsForProject(project.id));
   
   // Build sets for comparison
   const currentCVEIds = new Set(currentVulns.map(v => v.cve));
@@ -211,12 +214,18 @@ async function checkProjectVulnerabilities(project) {
   const resolvedHighPlus = storedCVEs
     .filter(v => !currentCVEIds.has(v.cve_id) && (v.severity === 'HIGH' || v.severity === 'CRITICAL'));
   
-  // Filter new vulns to HIGH and CRITICAL only for alerting
-  const newHighVulns = newVulns.filter(v => v.severity === 'HIGH');
-  const newCriticalVulns = newVulns.filter(v => v.severity === 'CRITICAL');
+  // Filter new vulns to HIGH and CRITICAL only for alerting (excluding ignored)
+  const newHighVulns = newVulns.filter(
+    v => v.severity === 'HIGH' && !ignoredCVEIds.has(v.cve)
+  );
+  const newCriticalVulns = newVulns.filter(
+    v => v.severity === 'CRITICAL' && !ignoredCVEIds.has(v.cve)
+  );
   
-  // All current CRITICAL vulns (for always alerting)
-  const allCurrentCritical = currentVulns.filter(v => v.severity === 'CRITICAL');
+  // All current CRITICAL vulns (for always alerting), excluding ignored
+  const allCurrentCritical = currentVulns.filter(
+    v => v.severity === 'CRITICAL' && !ignoredCVEIds.has(v.cve)
+  );
   
   // Save new CVEs to database
   if (newVulns.length > 0) {
@@ -250,7 +259,7 @@ async function checkProjectVulnerabilities(project) {
     });
   }
   
-  const counts = getVulnCounts(currentVulns);
+  const counts = getVulnCounts(currentVulns.filter(v => !ignoredCVEIds.has(v.cve)));
   console.log(`📊 ${project.name}: ${counts.total} total (${counts.critical} critical, ${counts.high} high)`);
   
   return {
@@ -347,7 +356,41 @@ async function sendVulnAlert(project, alertData) {
       });
     }
     
-    await channel.send({ embeds: [embed] });
+    // Build a select menu so users can mark vulnerabilities as "ignored"
+    const selectableMap = new Map();
+
+    for (const v of [...alertData.newCritical, ...alertData.newHigh, ...alertData.allCritical]) {
+      if (!selectableMap.has(v.cve)) {
+        selectableMap.set(v.cve, v);
+      }
+    }
+
+    const selectableVulns = Array.from(selectableMap.values()).slice(0, 25);
+
+    const components = [];
+
+    if (selectableVulns.length > 0) {
+      const options = selectableVulns.map(v => {
+        const label = `[${v.cve}] ${v.technology}`.slice(0, 100);
+        const description = `${v.severity} - v${v.version}`.slice(0, 100);
+        return {
+          label,
+          description,
+          value: v.cve,
+        };
+      });
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`ducktape_ignore_cves:${project.id}`)
+        .setPlaceholder('Select vulnerabilities to ignore in future scans')
+        .setMinValues(0)
+        .setMaxValues(options.length)
+        .addOptions(options);
+
+      components.push(new ActionRowBuilder().addComponents(menu));
+    }
+
+    await channel.send({ embeds: [embed], components });
     console.log(`📢 Vulnerability alert sent for ${project.name}`);
     
     // Generate AI explanation
