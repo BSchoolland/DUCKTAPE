@@ -126,8 +126,8 @@ client.on(Events.MessageCreate, async (message) => {
     // Format message history for AI
     const history = formatMessageHistory(Array.from(fetchedMessages.values()), client.user.id);
     console.log(history);
-    // Get AI response
-    const reply = await getAIResponse(history);
+    // Get AI response, scoped to this server's projects
+    const reply = await getAIResponse(history, message.guildId);
     
     if (reply) {
       // Split message if it exceeds Discord's 2000 character limit

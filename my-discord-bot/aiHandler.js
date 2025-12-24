@@ -1,5 +1,5 @@
 import { OpenRouter } from '@openrouter/sdk';
-import { getAllPersonalityTraits, getAllActiveProjects, getUptimeForLast3Hours, getProjectStatus } from './db.js';
+import { getAllPersonalityTraits, getProjectsByGuild, getUptimeForLast3Hours, getProjectStatus } from './db.js';
 
 const openrouter = new OpenRouter({
   apiKey: process.env.OPENROUTER_API_KEY,
@@ -87,17 +87,22 @@ function bucketUptimeInto15MinIntervals(uptimeChecks, hoursAgo = 3) {
 }
 
 /**
- * Generate uptime summary for all projects (last 3 hours, 15-min intervals)
+ * Generate uptime summary for all projects in a specific server (last 3 hours, 15-min intervals)
+ * @param {string} guildId - Discord guild (server) ID
  * @returns {string} Formatted uptime context string for system prompt
  */
-function generateUptimeContext() {
-  const projects = getAllActiveProjects();
-  
-  if (projects.length === 0) {
-    return 'No projects are currently being monitored.';
+function generateUptimeContext(guildId) {
+  if (!guildId) {
+    return 'No server context available for uptime summary.';
   }
 
-  let context = 'Current uptime status for all monitored projects:\n';
+  const projects = getProjectsByGuild(guildId);
+  
+  if (!projects || projects.length === 0) {
+    return 'No projects are currently being monitored in this server.';
+  }
+
+  let context = 'Current uptime status for all monitored projects in this server:\n';
   
   for (const project of projects) {
     const status = getProjectStatus(project.id);
@@ -126,9 +131,10 @@ function generateUptimeContext() {
 /**
  * Gets a response from the OpenRouter AI model
  * @param {Array} history - Message history to send to AI
+ * @param {string} guildId - Discord guild (server) ID for scoping uptime context
  * @returns {Promise<string|null>} The AI response content or null if failed
  */
-export async function getAIResponse(history) {
+export async function getAIResponse(history, guildId) {
   try {
     const baseSystemPrompt = "You are a AI discord bot named Ducktape designed to notify the user when projects they are monitoring have issues. Keep all responses concise and under 200 words.  You're not all serious though.  Personality traits: ";
     
@@ -138,8 +144,8 @@ export async function getAIResponse(history) {
       ? personalityTraits.join("; ") 
       : "None set yet - be naturally helpful and friendly.";
     
-    // Generate uptime context for all projects
-    const uptimeContext = generateUptimeContext();
+    // Generate uptime context for all projects in this server
+    const uptimeContext = generateUptimeContext(guildId);
     
     const systemPrompt = baseSystemPrompt + traitsSection + "\n\n" + uptimeContext;
     
